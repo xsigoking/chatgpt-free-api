@@ -3,7 +3,7 @@
 [![CI](https://github.com/xsigoking/chatgpt-free-api/actions/workflows/ci.yaml/badge.svg)](https://github.com/xsigoking/chatgpt-free-api/actions/workflows/ci.yaml)
 [![Docker Pulls](https://img.shields.io/docker/pulls/xsigoking/chatgpt-free-api)](https://hub.docker.com/r/xsigoking/chatgpt-free-api)
 
-Provides free GPT-3.5-Turbo API service through reverse login-free ChatGPT Web.
+Provide free GPT-3.5 API service by reverse engineering the login-free ChatGPT website.
 
 ## Install
 
