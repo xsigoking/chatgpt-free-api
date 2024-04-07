@@ -2,7 +2,13 @@
 name = "chatgpt-free-api"
 version = "0.1.0"
 edition = "2021"
+authors = ["xsigoking <xsigoking@gmail.com>"]
 description = "Provides free GPT-3.5-Turbo API service through reverse login-free ChatGPT Web"
+license = "MIT OR Apache-2.0"
+homepage = "https://github.com/xsigoking/chatgpt-free-api"
+repository = "https://github.com/xsigoking/chatgpt-free-api"
+categories = ["command-line-utilities", "network-programming", "web-programming::http-server"]
+keywords = ["chatgpt", "api"]
 
 [dependencies]
 anyhow = "1.0.81"

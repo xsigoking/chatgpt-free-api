@@ -15,7 +15,7 @@ docker run -d --name chatgpt-free-api xsigoking/chatgpt-free-api
 
 ### Binaries for macOS, Linux, and Windows
 
-Download it from [GitHub Releases](https://github.com/xsigoking/chatgpt-free-api/releases), unzip, and add aichat to your `$PATH`.
+Download it from [GitHub Releases](https://github.com/xsigoking/chatgpt-free-api/releases), unzip, and add chatgpt-free-api to your `$PATH`.
 
 ## Usage
 
