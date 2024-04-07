@@ -1,6 +1,6 @@
 # ChatGPT Free API
 
-Unlimited free GPT-3.5-Turbo API service via reverse login-free ChatGPT Web.
+Provides free GPT-3.5-Turbo API service through reverse login-free ChatGPT Web.
 
 ## Install
 
@@ -28,8 +28,8 @@ ALL_PROXY=http://localhost:18080 chatgpt-api-server # Use $ALL_PROXY to set the 
 
 ```sh
 curl http://127.0.0.1:3040/v1/chat/completions \
+  -i -X POST \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer any_string_you_like" \
   -d '{
     "model": "gpt-3.5-turbo",
     "messages": [

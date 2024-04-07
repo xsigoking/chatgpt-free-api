@@ -2,6 +2,7 @@
 name = "chatgpt-free-api"
 version = "0.1.0"
 edition = "2021"
+description = "Provides free GPT-3.5-Turbo API service through reverse login-free ChatGPT Web"
 
 [dependencies]
 anyhow = "1.0.81"
