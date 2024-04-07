@@ -13,7 +13,7 @@ use rand::{seq::SliceRandom, thread_rng};
 use reqwest::{Client, ClientBuilder, Method, Proxy};
 use reqwest_eventsource::{Error as EventSourceError, Event, RequestBuilderExt};
 use serde_json::{json, Value};
-use std::{convert::Infallible, env, sync::Arc};
+use std::{convert::Infallible, env, sync::Arc, time::Duration};
 use tokio::{net::TcpListener, sync::oneshot};
 use tokio_graceful::Shutdown;
 use tokio_stream::wrappers::ReceiverStream;
@@ -21,6 +21,7 @@ use uuid::Uuid;
 
 const PORT: u16 = 3040;
 const BASE_URL: &str = "https://chat.openai.com";
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -30,7 +31,7 @@ async fn main() -> Result<()> {
     } else {
         PORT
     };
-    let mut client_builder = ClientBuilder::new();
+    let mut client_builder = ClientBuilder::new().connect_timeout(CONNECT_TIMEOUT);
     if let Ok(proxy) = env::var("ALL_PROXY") {
         client_builder = client_builder.proxy(
             Proxy::all(proxy)
@@ -43,12 +44,14 @@ async fn main() -> Result<()> {
         client: client_builder.build()?,
     });
     let stop_server = server.run(listener).await?;
-    println!(
+    print!(
         r#"Access the API server at: http://0.0.0.0:{port}/v1/chat/completions
 
 Environment Variables:
   - PORT: change the listening port, defaulting to {PORT}
   - ALL_PROXY: set the proxy server
+
+Please contact us at https://github.com/xsigoking/chatgpt-free-api if you encounter any issues.
 "#
     );
 
