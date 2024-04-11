@@ -10,7 +10,7 @@ Provide free GPT-3.5 API service by reverse engineering the login-free ChatGPT w
 ### With docker
 
 ```sh
-docker run -d --name chatgpt-free-api xsigoking/chatgpt-free-api
+docker run -d -p 3040:3040 --name chatgpt-free-api xsigoking/chatgpt-free-api
 ```
 
 ### Binaries for macOS, Linux, and Windows
