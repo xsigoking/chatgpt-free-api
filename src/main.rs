@@ -377,7 +377,7 @@ impl Server {
                     "owned_by": "openai",
                     "permission": [
                         {
-                            "id": "modelperm-LwHkVFn8AcMItP432fKKDIKJ",
+                            "id": "modelperm-001",
                             "object": "model_permission",
                             "created": 1626777600,
                             "allow_create_engine": true,
@@ -415,7 +415,7 @@ impl Server {
         let data: Value = res.json().await?;
         let token = match data["token"].as_str() {
             Some(v) => v.to_string(),
-            None => bail!("Failed to refresh session, {data}"),
+            None => bail!("Failed to check the chat requirements, {data}"),
         };
         Ok((oai_device_id, token))
     }
