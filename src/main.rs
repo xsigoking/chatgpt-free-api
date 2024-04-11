@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate log;
+
 use anyhow::{anyhow, bail, Result};
 use bytes::Bytes;
 use chrono::Utc;
@@ -25,6 +28,8 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    init_logger();
+
     let port = if let Ok(port) = env::var("PORT") {
         port.parse::<u16>()
             .map_err(|_| anyhow!("Invalid environment variable $PORT"))?
@@ -44,7 +49,7 @@ async fn main() -> Result<()> {
         client: client_builder.build()?,
     });
     let stop_server = server.run(listener).await?;
-    print!(
+    println!(
         r#"Access the API server at: http://0.0.0.0:{port}/v1/chat/completions
 
 Environment Variables:
@@ -58,6 +63,14 @@ Please contact us at https://github.com/xsigoking/chatgpt-free-api if you encoun
     shutdown_signal().await;
     let _ = stop_server.send(());
     Ok(())
+}
+
+fn init_logger() {
+    env_logger::builder()
+        .parse_env(env_logger::Env::new().filter_or("RUST_LOG", "info"))
+        .format_target(false)
+        .format_module_path(false)
+        .init();
 }
 
 type AppResponse = Response<BoxBody<Bytes, Infallible>>;
@@ -186,7 +199,7 @@ impl Server {
             "websocket_request_id": random_id(),
         });
 
-        // println!("req body: {req_body}");
+        debug!("req body: {req_body}");
 
         let mut es = self
             .client
@@ -260,7 +273,6 @@ impl Server {
         let created = Utc::now().timestamp();
 
         let first_event = rx.recv().await;
-        // println!("first event: {first_event:?}");
 
         if let Some(ResEvent::First(Some(err))) = first_event {
             bail!("{err}");
@@ -469,6 +481,7 @@ fn create_bytes_body(id: &str, created: i64, content: &str) -> Bytes {
 }
 
 fn create_error_response<T: std::fmt::Display>(err: T) -> AppResponse {
+    error!("api error: {err}");
     let data = json!({
         "status": false,
         "error": {
