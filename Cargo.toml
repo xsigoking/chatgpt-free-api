@@ -1,6 +1,6 @@
 [package]
 name = "chatgpt-free-api"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 authors = ["xsigoking <xsigoking@gmail.com>"]
 description = "Provide free GPT-3.5 API service by reverse engineering the login-free ChatGPT website"
