@@ -415,7 +415,7 @@ impl Server {
         let data: Value = res.json().await?;
         let token = match data["token"].as_str() {
             Some(v) => v.to_string(),
-            None => bail!("Failed to refresh sesseion, {data}"),
+            None => bail!("Failed to refresh session, {data}"),
         };
         Ok((oai_device_id, token))
     }
