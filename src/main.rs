@@ -117,17 +117,25 @@ impl Server {
         self: Arc<Self>,
         req: hyper::Request<Incoming>,
     ) -> std::result::Result<AppResponse, hyper::Error> {
-        let method = req.method();
-        let uri = req.uri();
-        let mut res = if method == Method::POST && uri == "/v1/chat/completions" {
-            match self.chat_completion(req).await {
-                Ok(res) => res,
-                Err(err) => create_error_response(err),
-            }
+        let method = req.method().clone();
+        let uri = req.uri().clone();
+        let res = if method == Method::POST && uri == "/v1/chat/completions" {
+            self.chat_completion(req).await
+        } else if method == Method::GET && uri == "/v1/models" {
+            self.models(req).await
         } else {
-            let mut res = create_error_response("The requested endpoint was not found.");
-            *res.status_mut() = StatusCode::NOT_FOUND;
-            res
+            Err(anyhow!("The requested endpoint was not found."))
+        };
+        let mut res = match res {
+            Ok(res) => {
+                info!("{} {}", method, uri);
+                res
+            }
+            Err(err) => {
+                info!("{} {}", method, uri);
+                error!("api error: {err}");
+                create_error_response(err)
+            }
         };
         set_cors_header(&mut res);
         Ok(res)
@@ -322,6 +330,42 @@ impl Server {
         }
     }
 
+    async fn models(&self, _req: hyper::Request<Incoming>) -> Result<AppResponse> {
+        let body = json!({
+            "object": "list",
+            "data": [
+                {
+                    "id": "gpt-3.5-turbo",
+                    "object": "model",
+                    "created": 1626777600,
+                    "owned_by": "openai",
+                    "permission": [
+                        {
+                            "id": "modelperm-LwHkVFn8AcMItP432fKKDIKJ",
+                            "object": "model_permission",
+                            "created": 1626777600,
+                            "allow_create_engine": true,
+                            "allow_sampling": true,
+                            "allow_logprobs": true,
+                            "allow_search_indices": false,
+                            "allow_view": true,
+                            "allow_fine_tuning": false,
+                            "organization": "*",
+                            "group": null,
+                            "is_blocking": false
+                        }
+                    ],
+                    "root": "gpt-3.5-turbo",
+                    "parent": null
+                }
+            ]
+        });
+        let res = Response::builder()
+            .header("Content-Type", "application/json")
+            .body(Full::new(Bytes::from(body.to_string())).boxed())?;
+        Ok(res)
+    }
+
     async fn refresh_session(&self) -> Result<(String, String)> {
         let oai_device_id = random_id();
         let res = self
@@ -481,7 +525,6 @@ fn create_bytes_body(id: &str, created: i64, content: &str) -> Bytes {
 }
 
 fn create_error_response<T: std::fmt::Display>(err: T) -> AppResponse {
-    error!("api error: {err}");
     let data = json!({
         "status": false,
         "error": {
