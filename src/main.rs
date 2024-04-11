@@ -23,7 +23,9 @@ use tokio_stream::wrappers::ReceiverStream;
 use uuid::Uuid;
 
 const PORT: u16 = 3040;
-const BASE_URL: &str = "https://chat.openai.com";
+const CONVERSATION_URL: &str = "https://chat.openai.com/backend-anon/conversation";
+const CHAT_REQUIREMENTS_URL: &str =
+    "https://chat.openai.com/backend-anon/sentinel/chat-requirements";
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[tokio::main]
@@ -142,7 +144,7 @@ impl Server {
     }
 
     async fn chat_completion(&self, req: hyper::Request<Incoming>) -> Result<AppResponse> {
-        let (oai_device_id, token) = self.refresh_session().await?;
+        let (oai_device_id, token) = self.chat_requirements().await?;
 
         let req_body = req.collect().await?.to_bytes();
         let req_body: Value = serde_json::from_slice(&req_body)
@@ -211,7 +213,7 @@ impl Server {
 
         let mut es = self
             .client
-            .post(format!("{BASE_URL}/backend-api/conversation"))
+            .post(CONVERSATION_URL)
             .headers(common_headers())
             .header("oai-device-id", oai_device_id)
             .header("openai-sentinel-chat-requirements-token", token)
@@ -366,13 +368,11 @@ impl Server {
         Ok(res)
     }
 
-    async fn refresh_session(&self) -> Result<(String, String)> {
+    async fn chat_requirements(&self) -> Result<(String, String)> {
         let oai_device_id = random_id();
         let res = self
             .client
-            .post(format!(
-                "{BASE_URL}/backend-anon/sentinel/chat-requirements"
-            ))
+            .post(CHAT_REQUIREMENTS_URL)
             .headers(common_headers())
             .header("oai-device-id", oai_device_id.clone())
             .body("{}")
@@ -418,16 +418,19 @@ fn common_headers() -> HeaderMap {
     let mut headers = HeaderMap::new();
 
     headers.insert("accept", HeaderValue::from_static("*/*"));
-    headers.insert(
-        "accept-language",
-        HeaderValue::from_static("en-US,en;q=0.9"),
-    );
+    headers.insert("accept-language", HeaderValue::from_static("en"));
     headers.insert("cache-control", HeaderValue::from_static("no-cache"));
     headers.insert("content-type", HeaderValue::from_static("application/json"));
     headers.insert("oai-language", HeaderValue::from_static("en-US"));
-    headers.insert("origin", HeaderValue::from_static("baseUrl"));
+    headers.insert(
+        "origin",
+        HeaderValue::from_static("https://chat.openai.com"),
+    );
     headers.insert("pragma", HeaderValue::from_static("no-cache"));
-    headers.insert("referer", HeaderValue::from_static("baseUrl"));
+    headers.insert(
+        "referer",
+        HeaderValue::from_static("https://chat.openai.com/"),
+    );
     headers.insert(
         "sec-ch-ua",
         HeaderValue::from_static(
