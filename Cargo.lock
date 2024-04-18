@@ -157,6 +157,7 @@ name = "chatgpt-free-api"
 version = "0.2.0"
 dependencies = [
  "anyhow",
+ "base64",
  "bytes",
  "chrono",
  "env_logger",
