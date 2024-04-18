@@ -166,6 +166,7 @@ dependencies = [
  "http-body-util",
  "hyper",
  "hyper-util",
+ "lazy_static",
  "log",
  "rand",
  "reqwest",

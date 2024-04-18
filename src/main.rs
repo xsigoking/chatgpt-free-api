@@ -4,7 +4,7 @@ extern crate log;
 use anyhow::{anyhow, bail, Result};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use bytes::Bytes;
-use chrono::{DateTime, Datelike, FixedOffset, Timelike, Utc};
+use chrono::{DateTime, Datelike, Timelike, Utc};
 use futures_util::StreamExt;
 use http::{HeaderMap, HeaderValue, Response, StatusCode};
 use http_body_util::{combinators::BoxBody, BodyExt, Full, StreamBody};
@@ -13,7 +13,7 @@ use hyper::{
     service::service_fn,
 };
 use hyper_util::rt::{TokioExecutor, TokioIo};
-use rand::{seq::SliceRandom, thread_rng};
+use rand::{seq::SliceRandom, thread_rng, Rng};
 use reqwest::{Client, ClientBuilder, Method, Proxy};
 use reqwest_eventsource::{Error as EventSourceError, Event, RequestBuilderExt};
 use serde_json::{json, Value};
@@ -34,9 +34,18 @@ const CONVERSATION_URL: &str = "https://chat.openai.com/backend-anon/conversatio
 const CHAT_REQUIREMENTS_URL: &str =
     "https://chat.openai.com/backend-anon/sentinel/chat-requirements";
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
-const TIMEZONE: i32 = 3;
-const TIMEZONE_NAME: &str = "Eastern European Time";
 const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36";
+
+lazy_static::lazy_static! {
+    static ref PROOF_V1: u32 = {
+        let mut rng = rand::thread_rng();
+        rng.gen_range(2000..8000)
+    };
+    static ref PROOF_V2: u32 = {
+        let mut rng = rand::thread_rng();
+        rng.gen_range(8..24)
+    };
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -244,7 +253,7 @@ impl Server {
             "messages": new_messages,
             "parent_message_id": random_id(),
             "model": "text-davinci-002-render-sha",
-            "timezone_offset_min": -60 * TIMEZONE,
+            "timezone_offset_min": 0,
             "suggestions": [],
             "history_and_training_disabled": true,
             "conversation_mode": { "kind": "primary_assistant" },
@@ -600,15 +609,16 @@ fn random_id() -> String {
 }
 
 fn openai_sentinel_proof_token() -> String {
-    let datetime = format_date_time(
-        &Utc::now().with_timezone(&FixedOffset::east_opt(3600 * TIMEZONE).unwrap()),
+    let datetime = format_date_time(&Utc::now());
+    let value = format!(
+        r#"[{},"{datetime}",4294705152,{},"{USER_AGENT}"]"#,
+        *PROOF_V1, *PROOF_V2
     );
-    let value = format!(r#"[3713,"{datetime}",4294705152,10,"{USER_AGENT}"]"#);
     let value = STANDARD.encode(value);
     format!("gAAAAAB{value}")
 }
 
-fn format_date_time(dt: &DateTime<FixedOffset>) -> String {
+fn format_date_time(dt: &DateTime<Utc>) -> String {
     let weekday = match dt.weekday() {
         chrono::Weekday::Sun => "Sun",
         chrono::Weekday::Mon => "Mon",
@@ -633,9 +643,8 @@ fn format_date_time(dt: &DateTime<FixedOffset>) -> String {
         12 => "Dec",
         _ => unreachable!(),
     };
-    let sign = if TIMEZONE > 0 { '+' } else { '-' };
     format!(
-        "{} {} {:02} {} {:02}:{:02}:{:02} GMT{}{:02}00 ({})",
+        "{} {} {:02} {} {:02}:{:02}:{:02} GMT+0000 (Coordinated Universal Time)",
         weekday,
         month,
         dt.day(),
@@ -643,8 +652,5 @@ fn format_date_time(dt: &DateTime<FixedOffset>) -> String {
         dt.hour(),
         dt.minute(),
         dt.second(),
-        sign,
-        TIMEZONE,
-        TIMEZONE_NAME,
     )
 }
