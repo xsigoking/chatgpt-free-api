@@ -424,9 +424,7 @@ impl Server {
         let data: Value = res.json().await?;
         let token = match data["token"].as_str() {
             Some(v) => v.to_string(),
-            None => bail!(
-                r#"Failed to check the chat requirements, {data}. See https://github.com/xsigoking/chatgpt-free-api/issues/9 for more details."#
-            ),
+            None => bail!("Invalid data, {data}"),
         };
         Ok((oai_device_id, token))
     }
