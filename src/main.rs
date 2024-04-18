@@ -2,7 +2,7 @@
 extern crate log;
 
 use anyhow::{anyhow, bail, Result};
-use base64::{engine::general_purpose::STANDARD_NO_PAD, Engine};
+use base64::{engine::general_purpose::STANDARD, Engine};
 use bytes::Bytes;
 use chrono::{DateTime, Datelike, FixedOffset, Timelike, Utc};
 use futures_util::StreamExt;
@@ -18,7 +18,13 @@ use reqwest::{Client, ClientBuilder, Method, Proxy};
 use reqwest_eventsource::{Error as EventSourceError, Event, RequestBuilderExt};
 use serde_json::{json, Value};
 use std::{convert::Infallible, env, sync::Arc, time::Duration};
-use tokio::{net::TcpListener, sync::oneshot};
+use tokio::{
+    net::TcpListener,
+    sync::{
+        mpsc::{self, Sender},
+        oneshot,
+    },
+};
 use tokio_graceful::Shutdown;
 use tokio_stream::wrappers::ReceiverStream;
 use uuid::Uuid;
@@ -263,7 +269,7 @@ impl Server {
             .json(&req_body)
             .eventsource()?;
 
-        let (tx, mut rx) = tokio::sync::mpsc::channel(1);
+        let (tx, mut rx) = mpsc::channel(1);
 
         tokio::spawn(async move {
             let mut check = true;
@@ -272,10 +278,7 @@ impl Server {
                 match event {
                     Ok(Event::Open) => {}
                     Ok(Event::Message(message)) => {
-                        if check {
-                            let _ = tx.send(ResEvent::First(None)).await;
-                            check = false;
-                        }
+                        send_first_event(tx.clone(), None, &mut check).await;
                         if message.data == "[DONE]" {
                             let _ = tx.send(ResEvent::Done).await;
                             break;
@@ -297,23 +300,23 @@ impl Server {
                     }
                     Err(err) => {
                         match err {
+                            EventSourceError::StreamEnded => {}
                             EventSourceError::InvalidStatusCode(_, res) => {
                                 let status = res.status().as_u16();
                                 let data = match res.text().await {
                                     Ok(v) => format!("Invalid response code {status}, {v}"),
                                     Err(err) => format!("Invalid response, code {status}, {err}"),
                                 };
-                                if check {
-                                    let _ = tx.send(ResEvent::First(Some(data))).await;
-                                    check = false;
-                                }
+                                send_first_event(tx.clone(), Some(data), &mut check).await;
                             }
-                            EventSourceError::StreamEnded => {}
+                            EventSourceError::InvalidContentType(_, res) => {
+                                let text = res.text().await.unwrap_or_default();
+                                let err = format!("The chatgpt api should return data as 'text/event-stream', but it isn't. {text}");
+                                send_first_event(tx.clone(), Some(err), &mut check).await;
+                            }
                             _ => {
-                                if check {
-                                    let _ = tx.send(ResEvent::First(Some(err.to_string()))).await;
-                                    check = false;
-                                }
+                                send_first_event(tx.clone(), Some(err.to_string()), &mut check)
+                                    .await;
                             }
                         }
                         es.close();
@@ -435,6 +438,13 @@ enum ResEvent {
     First(Option<String>),
     Text(String),
     Done,
+}
+
+async fn send_first_event(tx: Sender<ResEvent>, data: Option<String>, check: &mut bool) {
+    if *check {
+        let _ = tx.send(ResEvent::First(data)).await;
+        *check = false;
+    }
 }
 
 async fn shutdown_signal() {
@@ -594,7 +604,7 @@ fn openai_sentinel_proof_token() -> String {
         &Utc::now().with_timezone(&FixedOffset::east_opt(3600 * TIMEZONE).unwrap()),
     );
     let value = format!(r#"[3713,"{datetime}",4294705152,10,"{USER_AGENT}"]"#);
-    let value = STANDARD_NO_PAD.encode(value);
+    let value = STANDARD.encode(value);
     format!("gAAAAAB{value}")
 }
 

@@ -5,6 +5,8 @@
 
 Provide free GPT-3.5 API service by reverse engineering the login-free ChatGPT website.
 
+**Note: The service requires access to [ChatGPT](https://chat.openai.com/) without login in your region.**
+
 ## Install
 
 ### With docker
