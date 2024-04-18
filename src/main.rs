@@ -2,8 +2,9 @@
 extern crate log;
 
 use anyhow::{anyhow, bail, Result};
+use base64::{engine::general_purpose::STANDARD_NO_PAD, Engine};
 use bytes::Bytes;
-use chrono::Utc;
+use chrono::{DateTime, Datelike, FixedOffset, Timelike, Utc};
 use futures_util::StreamExt;
 use http::{HeaderMap, HeaderValue, Response, StatusCode};
 use http_body_util::{combinators::BoxBody, BodyExt, Full, StreamBody};
@@ -27,6 +28,9 @@ const CONVERSATION_URL: &str = "https://chat.openai.com/backend-anon/conversatio
 const CHAT_REQUIREMENTS_URL: &str =
     "https://chat.openai.com/backend-anon/sentinel/chat-requirements";
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+const TIMEZONE: i32 = 3;
+const TIMEZONE_NAME: &str = "Eastern European Time";
+const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36";
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -86,7 +90,6 @@ Please contact us at https://github.com/xsigoking/chatgpt-free-api if you encoun
 fn init_logger() {
     env_logger::builder()
         .parse_env(env_logger::Env::new().filter_or("RUST_LOG", "info"))
-        .format_target(false)
         .format_module_path(false)
         .init();
 }
@@ -178,7 +181,10 @@ impl Server {
     }
 
     async fn chat_completion(&self, req: hyper::Request<Incoming>) -> Result<AppResponse> {
-        let (oai_device_id, token) = self.chat_requirements().await?;
+        let (oai_device_id, token) = self
+            .chat_requirements()
+            .await
+            .map_err(|err| anyhow!("Failed to meet chat requirements, {err}"))?;
 
         let req_body = req.collect().await?.to_bytes();
         let req_body: Value = serde_json::from_slice(&req_body)
@@ -232,7 +238,7 @@ impl Server {
             "messages": new_messages,
             "parent_message_id": random_id(),
             "model": "text-davinci-002-render-sha",
-            "timezone_offset_min": -180,
+            "timezone_offset_min": -60 * TIMEZONE,
             "suggestions": [],
             "history_and_training_disabled": true,
             "conversation_mode": { "kind": "primary_assistant" },
@@ -243,6 +249,8 @@ impl Server {
             "websocket_request_id": random_id(),
         });
 
+        let proof_token = openai_sentinel_proof_token();
+        debug!("headers: oai_device_id {oai_device_id}; openai-sentinel-chat-requirements-token {token}; openai-sentinel-proof-token {proof_token}");
         debug!("req body: {req_body}");
 
         let mut es = self
@@ -251,6 +259,7 @@ impl Server {
             .headers(common_headers())
             .header("oai-device-id", oai_device_id)
             .header("openai-sentinel-chat-requirements-token", token)
+            .header("openai-sentinel-proof-token", proof_token)
             .json(&req_body)
             .eventsource()?;
 
@@ -481,7 +490,7 @@ fn common_headers() -> HeaderMap {
     headers.insert("sec-fetch-dest", HeaderValue::from_static("empty"));
     headers.insert("sec-fetch-mode", HeaderValue::from_static("cors"));
     headers.insert("sec-fetch-site", HeaderValue::from_static("same-origin"));
-    headers.insert("user-agent", HeaderValue::from_static("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"));
+    headers.insert("user-agent", HeaderValue::from_static(USER_AGENT));
 
     headers
 }
@@ -580,4 +589,54 @@ fn create_error_response<T: std::fmt::Display>(err: T) -> AppResponse {
 
 fn random_id() -> String {
     Uuid::new_v4().to_string()
+}
+
+fn openai_sentinel_proof_token() -> String {
+    let datetime = format_date_time(
+        &Utc::now().with_timezone(&FixedOffset::east_opt(3600 * TIMEZONE).unwrap()),
+    );
+    let value = format!(r#"[3713,"{datetime}",4294705152,10,"{USER_AGENT}"]"#);
+    let value = STANDARD_NO_PAD.encode(value);
+    format!("gAAAAAB{value}")
+}
+
+fn format_date_time(dt: &DateTime<FixedOffset>) -> String {
+    let weekday = match dt.weekday() {
+        chrono::Weekday::Sun => "Sun",
+        chrono::Weekday::Mon => "Mon",
+        chrono::Weekday::Tue => "Tue",
+        chrono::Weekday::Wed => "Wed",
+        chrono::Weekday::Thu => "Thu",
+        chrono::Weekday::Fri => "Fri",
+        chrono::Weekday::Sat => "Sat",
+    };
+    let month = match dt.month() {
+        1 => "Jan",
+        2 => "Feb",
+        3 => "Mar",
+        4 => "Apr",
+        5 => "May",
+        6 => "Jun",
+        7 => "Jul",
+        8 => "Aug",
+        9 => "Sep",
+        10 => "Oct",
+        11 => "Nov",
+        12 => "Dec",
+        _ => unreachable!(),
+    };
+    let sign = if TIMEZONE > 0 { '+' } else { '-' };
+    format!(
+        "{} {} {:02} {} {:02}:{:02}:{:02} GMT{}{:02}00 ({})",
+        weekday,
+        month,
+        dt.day(),
+        dt.year(),
+        dt.hour(),
+        dt.minute(),
+        dt.second(),
+        sign,
+        TIMEZONE,
+        TIMEZONE_NAME,
+    )
 }
