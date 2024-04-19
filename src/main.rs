@@ -105,6 +105,7 @@ Please contact us at https://github.com/xsigoking/chatgpt-free-api if you encoun
 fn init_logger() {
     env_logger::builder()
         .parse_env(env_logger::Env::new().filter_or("RUST_LOG", "info"))
+        .format_target(false)
         .format_module_path(false)
         .init();
 }
