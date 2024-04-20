@@ -9,7 +9,7 @@ Provide free GPT-3.5 API service by reverse engineering the login-free ChatGPT w
 
 ## Install
 
-### With docker
+### Docker
 
 ```sh
 docker run -d -p 3040:3040 --name chatgpt-free-api xsigoking/chatgpt-free-api
@@ -25,8 +25,8 @@ Download it from [GitHub Releases](https://github.com/xsigoking/chatgpt-free-api
 
 ```sh
 chatgpt-api-server                                  # Listening on 0.0.0.0:3040, no proxy
-PORT=8080 chatgpt-api-server                        # Use $PORT to change the listening port
-ALL_PROXY=http://localhost:18080 chatgpt-api-server # Use $ALL_PROXY to set the proxy server
+PORT=8080 chatgpt-api-server                        # Listening on port 8080
+ALL_PROXY=http://localhost:18080 chatgpt-api-server # Use a proxy
 ```
 
 ### Request Example
