@@ -4,7 +4,7 @@ extern crate log;
 use anyhow::{anyhow, bail, Result};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use bytes::Bytes;
-use chrono::{DateTime, Datelike, Timelike, Utc};
+use chrono::Utc;
 use futures_util::StreamExt;
 use http::{HeaderMap, HeaderValue, Response, StatusCode};
 use http_body_util::{combinators::BoxBody, BodyExt, Full, StreamBody};
@@ -17,6 +17,7 @@ use rand::{seq::SliceRandom, thread_rng, Rng};
 use reqwest::{Client, ClientBuilder, Method, Proxy};
 use reqwest_eventsource::{Error as EventSourceError, Event, RequestBuilderExt};
 use serde_json::{json, Value};
+use sha3::{Digest, Sha3_512};
 use std::{convert::Infallible, env, sync::Arc, time::Duration};
 use tokio::{
     net::TcpListener,
@@ -40,10 +41,6 @@ lazy_static::lazy_static! {
     static ref PROOF_V1: u32 = {
         let mut rng = rand::thread_rng();
         rng.gen_range(2000..8000)
-    };
-    static ref PROOF_V2: u32 = {
-        let mut rng = rand::thread_rng();
-        rng.gen_range(8..24)
     };
 }
 
@@ -197,7 +194,7 @@ impl Server {
     }
 
     async fn chat_completion(&self, req: hyper::Request<Incoming>) -> Result<AppResponse> {
-        let (oai_device_id, token) = self
+        let requirements = self
             .chat_requirements()
             .await
             .map_err(|err| anyhow!("Failed to meet chat requirements, {err}"))?;
@@ -265,16 +262,19 @@ impl Server {
             "websocket_request_id": random_id(),
         });
 
-        let proof_token = openai_sentinel_proof_token();
-        debug!("headers: oai_device_id {oai_device_id}; openai-sentinel-chat-requirements-token {token}; openai-sentinel-proof-token {proof_token}");
+        let proof_token = calculate_proof_token(&requirements.seed, &requirements.difficulty);
+        debug!("headers: oai_device_id {}; openai-sentinel-chat-requirements-token {}; openai-sentinel-proof-token {proof_token}", requirements.oai_device_id, requirements.token);
         debug!("req body: {req_body}");
 
         let mut es = self
             .client
             .post(CONVERSATION_URL)
             .headers(common_headers())
-            .header("oai-device-id", oai_device_id)
-            .header("openai-sentinel-chat-requirements-token", token)
+            .header("oai-device-id", requirements.oai_device_id)
+            .header(
+                "openai-sentinel-chat-requirements-token",
+                requirements.token,
+            )
             .header("openai-sentinel-proof-token", proof_token)
             .json(&req_body)
             .eventsource()?;
@@ -424,7 +424,7 @@ impl Server {
         Ok(res)
     }
 
-    async fn chat_requirements(&self) -> Result<(String, String)> {
+    async fn chat_requirements(&self) -> Result<Requirements> {
         let oai_device_id = random_id();
         let res = self
             .client
@@ -435,11 +435,27 @@ impl Server {
             .send()
             .await?;
         let data: Value = res.json().await?;
-        let token = match data["token"].as_str() {
-            Some(v) => v.to_string(),
-            None => bail!("Invalid data, {data}"),
-        };
-        Ok((oai_device_id, token))
+        if let (Some(token), Some((seed, difficulty))) = (
+            data["token"].as_str(),
+            data["proofofwork"].as_object().and_then(|v| {
+                if let (Some(seed), Some(difficulty)) =
+                    (v["seed"].as_str(), v["difficulty"].as_str())
+                {
+                    Some((seed, difficulty))
+                } else {
+                    None
+                }
+            }),
+        ) {
+            Ok(Requirements {
+                oai_device_id,
+                token: token.to_string(),
+                seed: seed.to_string(),
+                difficulty: difficulty.to_string(),
+            })
+        } else {
+            bail!("Invalid data, {data}");
+        }
     }
 }
 
@@ -448,6 +464,14 @@ enum ResEvent {
     First(Option<String>),
     Text(String),
     Done,
+}
+
+#[derive(Debug)]
+struct Requirements {
+    oai_device_id: String,
+    token: String,
+    seed: String,
+    difficulty: String,
 }
 
 async fn send_first_event(tx: Sender<ResEvent>, data: Option<String>, check: &mut bool) {
@@ -490,6 +514,7 @@ fn common_headers() -> HeaderMap {
         HeaderValue::from_static("https://chat.openai.com"),
     );
     headers.insert("pragma", HeaderValue::from_static("no-cache"));
+    headers.insert("priority", HeaderValue::from_static("u=1, i"));
     headers.insert(
         "referer",
         HeaderValue::from_static("https://chat.openai.com/"),
@@ -609,49 +634,36 @@ fn random_id() -> String {
     Uuid::new_v4().to_string()
 }
 
-fn openai_sentinel_proof_token() -> String {
-    let datetime = format_date_time(&Utc::now());
-    let value = format!(
-        r#"[{},"{datetime}",4294705152,{},"{USER_AGENT}"]"#,
-        *PROOF_V1, *PROOF_V2
-    );
-    let value = STANDARD.encode(value);
-    format!("gAAAAAB{value}")
+fn calculate_proof_token(seed: &str, diff: &str) -> String {
+    let now = Utc::now();
+    let datetime = now.format("%a %b %d %Y %H:%M:%S GMT%z (Coordinated Universal Time)");
+
+    let diff_len = diff.len() / 2;
+    let mut hasher = Sha3_512::new();
+
+    for i in 0..100000 {
+        let value = format!(
+            r#"[{},"{datetime}",4294705152,{},"{USER_AGENT}"]"#,
+            *PROOF_V1, i
+        );
+        let base = STANDARD.encode(value);
+        hasher.update(format!("{}{}", seed, base).as_bytes());
+        let hash = hasher.finalize_reset();
+        let hash_hex = hex_encode(&hash[..diff_len]);
+
+        if hash_hex.as_str() <= diff {
+            return format!("gAAAAAB{}", base);
+        }
+    }
+
+    format!(
+        "gAAAAABwQ8Lk5FbGpA2NcR9dShT6gYjU7VxZ4D{}",
+        STANDARD.encode(format!("\"{}\"", seed))
+    )
 }
 
-fn format_date_time(dt: &DateTime<Utc>) -> String {
-    let weekday = match dt.weekday() {
-        chrono::Weekday::Sun => "Sun",
-        chrono::Weekday::Mon => "Mon",
-        chrono::Weekday::Tue => "Tue",
-        chrono::Weekday::Wed => "Wed",
-        chrono::Weekday::Thu => "Thu",
-        chrono::Weekday::Fri => "Fri",
-        chrono::Weekday::Sat => "Sat",
-    };
-    let month = match dt.month() {
-        1 => "Jan",
-        2 => "Feb",
-        3 => "Mar",
-        4 => "Apr",
-        5 => "May",
-        6 => "Jun",
-        7 => "Jul",
-        8 => "Aug",
-        9 => "Sep",
-        10 => "Oct",
-        11 => "Nov",
-        12 => "Dec",
-        _ => unreachable!(),
-    };
-    format!(
-        "{} {} {:02} {} {:02}:{:02}:{:02} GMT+0000 (Coordinated Universal Time)",
-        weekday,
-        month,
-        dt.day(),
-        dt.year(),
-        dt.hour(),
-        dt.minute(),
-        dt.second(),
-    )
+fn hex_encode(bytes: &[u8]) -> String {
+    bytes
+        .iter()
+        .fold(String::new(), |acc, b| acc + &format!("{:02x}", b))
 }
