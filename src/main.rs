@@ -174,6 +174,11 @@ impl Server {
             self.chat_completion(req).await
         } else if method == Method::GET && uri == "/v1/models" {
             self.models(req).await
+        } else if method == Method::OPTIONS
+            && (uri == "/v1/chat/completions" || uri == "/v1/models")
+        {
+            status = StatusCode::NO_CONTENT;
+            Ok(Response::default())
         } else {
             status = StatusCode::NOT_FOUND;
             Err(anyhow!("The requested endpoint was not found."))
