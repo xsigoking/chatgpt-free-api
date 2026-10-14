@@ -423,7 +423,7 @@ impl Server {
             "object": "list",
             "data": [
                 {
-                    "id": "gpt-3.5-turbo",
+                    "id": "gpt-6-luna",
                     "object": "model",
                     "created": 1626777600,
                     "owned_by": "openai",
@@ -443,7 +443,7 @@ impl Server {
                             "is_blocking": false
                         }
                     ],
-                    "root": "gpt-3.5-turbo",
+                    "root": "gpt-6-luna",
                     "parent": null
                 }
             ]
@@ -598,7 +598,7 @@ fn create_frame(id: &str, created: i64, content: &str, done: bool) -> Frame<Byte
         "id": id,
         "object": "chat.completion.chunk",
         "created": created,
-        "model": "gpt-3.5-turbo",
+        "model": "gpt-6-luna",
         "choices": [
             {
                 "index": 0,
@@ -625,7 +625,7 @@ fn create_bytes_body(id: &str, created: i64, content: &str) -> Bytes {
         "id": id,
         "object": "chat.completion",
         "created": created,
-        "model": "gpt-3.5-turbo",
+        "model": "gpt-6-luna",
         "choices": [
             {
                 "index": 0,
